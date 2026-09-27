@@ -1,0 +1,322 @@
+diff --git a/simulation/scratch/third.cc b/simulation/scratch/third.cc
+index 7885c2c..296248b 100644
+--- a/simulation/scratch/third.cc
++++ b/simulation/scratch/third.cc
+@@ -239,6 +239,8 @@ bool cbap_migration_trace = false;
+ // background load level can be constructed (0 = disabled).
+ std::set<uint32_t> app_rate_cap_flows;
+ uint64_t app_rate_cap_bps = 0;
++std::set<uint32_t> app_rate_cap2_flows;
++uint64_t app_rate_cap2_bps = 0;
+ double cbap_queue_target_fraction = 0.25;
+ uint32_t cbap_tx_trace_tracking_packets = 4096;
+ uint32_t cbap_increase_policy = RdmaHw::CBAP_INCREASE_LEGACY_V1;
+@@ -377,6 +379,12 @@ FILE *prt_group_decisions_csv = NULL;
+ FILE *link_csv = NULL, *selected_csv = NULL, *pfc_csv = NULL;
+ FILE *pfc_semantic_csv = NULL;
+ FILE *cbap_packet_trace_csv = NULL;
++double dart_alpha = 0.95;
++uint32_t dart_active_timeout_us = 100;
++uint32_t dart_update_min_interval_us = 10;
++uint32_t dart_ctrl_delay_us = 6;
++uint32_t dart_oracle_n = 0;
++uint64_t dart_min_rate_mbps = 100;
+ uint64_t cbap_packet_trace_rows = 0;
+ bool cbap_packet_trace_truncated = false;
+ uint64_t trace_total_bytes = 0;
+@@ -811,9 +819,9 @@ void ReadCbapInputs(){
+ 			ConfigError("CBAP_QUEUE_BAND_V2_ENABLE requires "
+ 				"CBAP_STEADY_CAP_ENABLE 1 (D4v2 = D3 + top-up)");
+ 		if (!cbap_qb2_bmax_set ||
+-				!(cbap_qb2_bmax_ratio > 0.0 && cbap_qb2_bmax_ratio <= 0.10))
+-			ConfigError("CBAP_QB2_BMAX_RATIO missing or outside (0, 0.10] "
+-				"(the old +0.30C policy is deliberately unreachable)");
++				!(cbap_qb2_bmax_ratio > 0.0 && cbap_qb2_bmax_ratio <= 0.30))
++			ConfigError("CBAP_QB2_BMAX_RATIO missing or outside (0, 0.30] "
++				"(guard relaxed from 0.10 for the 200G S5 BMAX sweep)");
+ 		if (!cbap_qb2_qtarget_set ||
+ 				!(cbap_qb2_qtarget_ratio > 0.0 && cbap_qb2_qtarget_ratio <= 0.5))
+ 			ConfigError("CBAP_QB2_QTARGET_RATIO missing or outside (0, 0.5]");
+@@ -2465,6 +2473,13 @@ void ApplyBackgroundRateCap(uint32_t src, uint32_t dip, uint16_t sport, uint16_t
+ 	qp->m_appRateCapBps = app_rate_cap_bps;
+ }
+ 
++void ApplyBackgroundRateCap2(uint32_t src, uint32_t dip, uint16_t sport, uint16_t pg){
++	Ptr<RdmaDriver> driver = n.Get(src)->GetObject<RdmaDriver>();
++	Ptr<RdmaQueuePair> qp = driver->m_rdma->GetQp(dip, sport, pg);
++	NS_ASSERT_MSG(qp, "background flow QP not found for cap2");
++	qp->m_appRateCapBps = app_rate_cap2_bps;
++}
++
+ void ScheduleFlowInputs(){//开始规划流
+ 	while (flow_input.idx < flow_num && Seconds(flow_input.start_time) == Simulator::Now()){//开始执行流
+ 		uint32_t port = portNumder[flow_input.src][flow_input.dst]++; // get a new port number
+@@ -2510,6 +2525,15 @@ void ScheduleFlowInputs(){//开始规划流
+ 			Simulator::Schedule(NanoSeconds(1), &ApplyBackgroundRateCap,
+ 				capSrc, capDip, capSport, capPg);
+ 		}
++		if (app_rate_cap2_bps > 0 &&
++				app_rate_cap2_flows.count(flow_input.idx) > 0){
++			uint32_t cap2Src = flow_input.src;
++			uint32_t cap2Dip = serverAddress[flow_input.dst].Get();
++			uint16_t cap2Sport = port;
++			uint16_t cap2Pg = flow_input.pg;
++			Simulator::Schedule(NanoSeconds(1), &ApplyBackgroundRateCap2,
++				cap2Src, cap2Dip, cap2Sport, cap2Pg);
++		}
+ 
+ 		// get the next flow input
+ 		flow_input.idx++;
+@@ -3698,6 +3722,21 @@ int main(int argc, char *argv[])
+ 				conf>>cbap_migration_max_rtt;
+ 			else if(key.compare("CBAP_MIGRATION_TRACE")==0)
+ 				conf>>cbap_migration_trace;
++			else if(key.compare("APP_RATE_CAP2_FLOW")==0){
++				std::string capList2;
++				conf>>capList2;
++				app_rate_cap2_flows.clear();
++				std::stringstream capss2(capList2);
++				std::string capTok2;
++				while (std::getline(capss2, capTok2, ',')){
++					if (capTok2.empty())
++						continue;
++					app_rate_cap2_flows.insert(
++						(uint32_t)strtoul(capTok2.c_str(), NULL, 10));
++				}
++			}
++			else if(key.compare("APP_RATE_CAP2_BPS")==0)
++				conf>>app_rate_cap2_bps;
+ 			else if(key.compare("APP_RATE_CAP_FLOW")==0){
+ 				// Accepts a comma-separated list so a scenario with several
+ 				// background flows (e.g. one per bottleneck) can cap them all.
+@@ -4127,6 +4166,30 @@ int main(int argc, char *argv[])
+ 				error_rate_per_link = v;
+ 				std::cout << "ERROR_RATE_PER_LINK\t\t" << error_rate_per_link << "\n";
+ 			}
++			else if (key.compare("DART_ALPHA") == 0){
++				conf >> dart_alpha;
++				std::cout << "DART_ALPHA\t\t\t" << dart_alpha << "\n";
++			}
++			else if (key.compare("DART_ACTIVE_TIMEOUT_US") == 0){
++				conf >> dart_active_timeout_us;
++				std::cout << "DART_ACTIVE_TIMEOUT_US\t\t" << dart_active_timeout_us << "\n";
++			}
++			else if (key.compare("DART_UPDATE_MIN_INTERVAL_US") == 0){
++				conf >> dart_update_min_interval_us;
++				std::cout << "DART_UPDATE_MIN_INTERVAL_US\t" << dart_update_min_interval_us << "\n";
++			}
++			else if (key.compare("DART_CTRL_DELAY_US") == 0){
++				conf >> dart_ctrl_delay_us;
++				std::cout << "DART_CTRL_DELAY_US\t\t" << dart_ctrl_delay_us << "\n";
++			}
++			else if (key.compare("DART_ORACLE_N") == 0){
++				conf >> dart_oracle_n;
++				std::cout << "DART_ORACLE_N\t\t\t" << dart_oracle_n << "\n";
++			}
++			else if (key.compare("DART_MIN_RATE_MBPS") == 0){
++				conf >> dart_min_rate_mbps;
++				std::cout << "DART_MIN_RATE_MBPS\t\t" << dart_min_rate_mbps << "\n";
++			}
+ 			else if (key.compare("CC_MODE") == 0){
+ 				conf >> cc_mode;
+ 				std::cout << "CC_MODE\t\t" << cc_mode << '\n';
+@@ -4273,7 +4336,8 @@ int main(int argc, char *argv[])
+ 					if (!(cc_mode == 0 || cc_mode == 1 ||
+ 							cc_mode == 3 || cc_mode == 7 ||
+ 							cc_mode == 8 ||
+-							(cc_mode >= 11 && cc_mode <= 31)))
++							(cc_mode >= 11 && cc_mode <= 31) ||
++						cc_mode == RdmaHw::CC_MODE_DART_RA))
+ 					ConfigError("ROUND_MODE CC_MODE is not registered");
+ 		if (crfm_trace_sample_us < 10)
+ 			ConfigError("CRFM_TRACE_SAMPLE_US must be at least 10");
+@@ -4434,6 +4498,13 @@ int main(int argc, char *argv[])
+ 		printf("PINT bits: %d bytes: %d\n", Pint::get_n_bits(), Pint::get_n_bytes());
+ 	}
+ 
++	if (cc_mode == RdmaHw::CC_MODE_DART_RA)
++		RdmaHw::SetDartConfig(dart_alpha,
++			(uint64_t)dart_active_timeout_us * 1000ULL,
++			(uint64_t)dart_update_min_interval_us * 1000ULL,
++			(uint64_t)dart_ctrl_delay_us * 1000ULL,
++			dart_oracle_n,
++			dart_min_rate_mbps * 1000000ULL);
+ 	SeedManager::SetSeed(sim_seed);
+ 
+ 	topof.open(topology_file.c_str());
+diff --git a/simulation/src/point-to-point/model/rdma-hw.cc b/simulation/src/point-to-point/model/rdma-hw.cc
+index 668d288..64ced3b 100644
+--- a/simulation/src/point-to-point/model/rdma-hw.cc
++++ b/simulation/src/point-to-point/model/rdma-hw.cc
+@@ -6226,6 +6226,107 @@ Ptr<RdmaQueuePair> RdmaHw::GetQp(uint32_t dip, uint16_t sport, uint16_t pg){
+ 		return it->second;
+ 	return NULL;
+ }
++
++// ===================== DART-RA baseline (CC_MODE_DART_RA = 40) ==============
++// DART-inspired receiver-driven direct rate allocation.  Implements ONLY the
++// receiver-congestion half of DART (Xue et al., ToN 2020): the receiver
++// counts flows active on its access link inside a sliding window and assigns
++// each an equal share of alpha * C_recv.  The allocation travels over an
++// IDEALISED control channel: it is applied at the sender after a fixed delay,
++// consumes no bandwidth and is never lost, which makes this baseline an
++// upper bound on any real receiver-allocation implementation.  DART's
++// in-network deflection half is NOT implemented.  No other CC mode reaches
++// this code (all entry points are gated on CC_MODE_DART_RA).
++struct DartCfg {
++	double alpha;
++	uint64_t activeTimeoutNs;
++	uint64_t minIntervalNs;
++	uint64_t ctrlDelayNs;
++	uint64_t minRateBps;
++	uint32_t oracleN;
++};
++static DartCfg s_dartCfg = {0.95, 100000, 10000, 6000, 100000000ULL, 0};
++struct DartSenderRef {
++	RdmaHw *hw;
++	Ptr<RdmaQueuePair> qp;
++	uint64_t lastSeenNs;
++	uint64_t allocBps;
++	DartSenderRef() : hw(NULL), qp(NULL), lastSeenNs(0), allocBps(0) {}
++};
++static std::map<uint64_t, DartSenderRef> s_dartSenders;
++struct DartRecvState {
++	uint64_t lastUpdateNs;
++	std::map<uint64_t, uint64_t> lastSeen;   // flow key -> last data arrival
++	DartRecvState() : lastUpdateNs(0) {}
++};
++static std::map<uint32_t, DartRecvState> s_dartRecv;   // by receiver node id
++
++static uint64_t DartFlowKey(uint32_t sip, uint16_t sport, uint16_t dport){
++	return ((uint64_t)sip << 32) | ((uint64_t)sport << 16) | (uint64_t)dport;
++}
++
++void RdmaHw::SetDartConfig(double alpha, uint64_t activeTimeoutNs,
++		uint64_t minIntervalNs, uint64_t ctrlDelayNs, uint32_t oracleN,
++		uint64_t minRateBps){
++	s_dartCfg.alpha = alpha;
++	s_dartCfg.activeTimeoutNs = activeTimeoutNs;
++	s_dartCfg.minIntervalNs = minIntervalNs;
++	s_dartCfg.ctrlDelayNs = ctrlDelayNs;
++	s_dartCfg.oracleN = oracleN;
++	s_dartCfg.minRateBps = minRateBps;
++}
++
++void RdmaHw::DartDeliverRate(RdmaHw *hw, Ptr<RdmaQueuePair> qp, uint64_t bps){
++	if (!hw || !qp || qp->IsFinished())
++		return;
++	hw->ChangeRate(qp, DataRate(bps));
++}
++
++void RdmaHw::DartOnReceiverData(CustomHeader &ch){
++	const uint64_t now = Simulator::Now().GetTimeStep();
++	const uint64_t key = DartFlowKey(ch.sip, ch.udp.sport, ch.udp.dport);
++	std::map<uint64_t, DartSenderRef>::iterator sit = s_dartSenders.find(key);
++	if (sit == s_dartSenders.end())
++		return;                       // not a registered DART sender
++	DartRecvState &st = s_dartRecv[m_node->GetId()];
++	st.lastSeen[key] = now;
++	if (st.lastUpdateNs != 0 &&
++			now - st.lastUpdateNs < s_dartCfg.minIntervalNs)
++		return;
++	st.lastUpdateNs = now;
++	// receiver access-link capacity = the NIC this packet arrived on
++	Ptr<RdmaRxQueuePair> rxQp = GetRxQp(ch.dip, ch.sip, ch.udp.dport,
++		ch.udp.sport, ch.udp.pg, true);
++	const uint32_t nic = GetNicIdxOfRxQp(rxQp);
++	const uint64_t cap = m_nic[nic].dev->GetDataRate().GetBitRate();
++	// count flows active within the sliding window
++	uint32_t n = 0;
++	for (std::map<uint64_t, uint64_t>::const_iterator it = st.lastSeen.begin();
++			it != st.lastSeen.end(); ++it)
++		if (now - it->second <= s_dartCfg.activeTimeoutNs)
++			n++;
++	if (n == 0)
++		return;
++	uint64_t alloc = (uint64_t)(s_dartCfg.alpha * (double)cap / (double)n);
++	if (alloc < s_dartCfg.minRateBps)
++		alloc = s_dartCfg.minRateBps;
++	for (std::map<uint64_t, uint64_t>::const_iterator it = st.lastSeen.begin();
++			it != st.lastSeen.end(); ++it){
++		if (now - it->second > s_dartCfg.activeTimeoutNs)
++			continue;
++		std::map<uint64_t, DartSenderRef>::iterator fs =
++			s_dartSenders.find(it->first);
++		if (fs == s_dartSenders.end())
++			continue;
++		DartSenderRef &ref = fs->second;
++		if (ref.allocBps == alloc)
++			continue;                 // no change, no message
++		ref.allocBps = alloc;
++		Simulator::Schedule(NanoSeconds(s_dartCfg.ctrlDelayNs),
++			&RdmaHw::DartDeliverRate, ref.hw, ref.qp, alloc);
++	}
++}
++
+ void RdmaHw::AddQueuePair(uint64_t size, uint16_t pg, Ipv4Address sip, Ipv4Address dip, uint16_t sport, uint16_t dport, uint32_t win, uint64_t baseRtt, Callback<void> notifyAppFinish){
+ 	// create qp
+ 	Ptr<RdmaQueuePair> qp = CreateObject<RdmaQueuePair>(pg, sip, dip, sport, dport);
+@@ -6245,6 +6346,25 @@ void RdmaHw::AddQueuePair(uint64_t size, uint16_t pg, Ipv4Address sip, Ipv4Addre
+ 	DataRate m_bps = m_nic[nic_idx].dev->GetDataRate();
+ 	qp->m_rate = m_bps;
+ 	qp->m_max_rate = m_bps;
++	if (m_cc_mode == CC_MODE_DART_RA){
++		// register the sender so the receiver-side allocator can steer it
++		s_dartSenders[DartFlowKey(sip.Get(), sport, dport)] =
++			DartSenderRef();
++		DartSenderRef &r = s_dartSenders[DartFlowKey(sip.Get(), sport,
++			dport)];
++		r.hw = this;
++		r.qp = qp;
++		if (s_dartCfg.oracleN > 0){
++			// incast-group hint start (DART uses application-provided
++			// group information); otherwise RoCE line-rate start
++			uint64_t init = (uint64_t)(s_dartCfg.alpha *
++				(double)m_bps.GetBitRate() / (double)s_dartCfg.oracleN);
++			if (init < s_dartCfg.minRateBps)
++				init = s_dartCfg.minRateBps;
++			qp->m_rate = DataRate(init);
++			r.allocBps = init;
++		}
++	}
+ 	if (IsDcqcnMode(m_cc_mode)){
+ 		qp->mlx.m_targetRate = m_bps;
+ 		}else if (UsesHpccTelemetryMode(m_cc_mode)){
+@@ -7764,6 +7884,8 @@ void RdmaHw::DeleteRxQp(uint32_t dip, uint16_t pg, uint16_t dport){
+ }
+ 
+ int RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader &ch){
++	if (m_cc_mode == CC_MODE_DART_RA)
++		DartOnReceiverData(ch);
+ 	PrtProbeTag probe;
+ 	if (p->PeekPacketTag(probe)){
+ 		Ptr<RdmaRxQueuePair> rxQp = GetRxQp(ch.dip, ch.sip,
+diff --git a/simulation/src/point-to-point/model/rdma-hw.h b/simulation/src/point-to-point/model/rdma-hw.h
+index e8d31c8..18643ea 100644
+--- a/simulation/src/point-to-point/model/rdma-hw.h
++++ b/simulation/src/point-to-point/model/rdma-hw.h
+@@ -52,7 +52,10 @@ public:
+ 		// control is handed to HPCC rather than DCQCN once the first
+ 		// actionable feedback arrives.  Added to separate the contribution of
+ 		// batch admission from the strength of the post-handoff controller.
+-		CC_MODE_CBAP_SBA_HPCC = 31
++		CC_MODE_CBAP_SBA_HPCC = 31,
++		// DART-inspired receiver-driven direct allocation baseline
++		// (receiver-congestion half only, idealised control channel).
++		CC_MODE_DART_RA = 40
+ 	};
+ 	enum {
+ 		BOP_Q0_ORIGIN_NONE = 0,
+@@ -109,6 +112,12 @@ public:
+ 	// True for both SBA variants (DCQCN- and HPCC-based post-handoff).
+ 	static bool IsCbapSbaMode(uint32_t mode);
+ 	static bool IsCbapMode(uint32_t mode);
++	static void SetDartConfig(double alpha, uint64_t activeTimeoutNs,
++		uint64_t minIntervalNs, uint64_t ctrlDelayNs, uint32_t oracleN,
++		uint64_t minRateBps);
++	static void DartDeliverRate(RdmaHw *hw, Ptr<RdmaQueuePair> qp,
++		uint64_t bps);
++	void DartOnReceiverData(CustomHeader &ch);
+ 	struct BopMultilinkLink {
+ 		uint32_t linkId;
+ 		uint32_t nodeId;

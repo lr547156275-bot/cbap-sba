@@ -1,0 +1,26 @@
+sweep,value,cell,note,cct_ms,mean_fct_ms,p99_fct_ms,qpeak_MB,pfc_rows,bg_acked_MB
+eta_effective,0.20,ps5_etaB200,both keys set; effective eta = value;DNF_incast_incomplete_at_stop_time,,,,,,
+eta_effective,0.35,ps5_etaB350,both keys set; effective eta = value,21.631,21.461,21.626,0.435,0,569.8
+eta_effective,0.50,ps5_etaB500,both keys set; effective eta = value,18.128,18.023,18.122,0.437,0,554.8
+eta_effective,0.65,ps5_etaB650,both keys set; effective eta = value,11.630,11.267,11.624,0.486,0,524.7
+eta_effective,0.80,ps5_etaB800,both keys set; effective eta = value,11.634,11.212,11.628,0.528,0,524.2
+eta_effective,0.90,REUSE,campaign default: IRR 0.90,11.662,10.977,11.656,0.502,0,523.5
+eta_clamped,0.20,ps5_eta200,"INVALID AS SWEEP: max(eta,IRR0.90) clamp; outputs byte-identical after label strip",11.662,10.977,11.656,0.502,0,523.5
+eta_clamped,0.35,ps5_eta350,"INVALID AS SWEEP: max(eta,IRR0.90) clamp; outputs byte-identical after label strip",11.662,10.977,11.656,0.502,0,523.5
+eta_clamped,0.65,ps5_eta650,"INVALID AS SWEEP: max(eta,IRR0.90) clamp; outputs byte-identical after label strip",11.662,10.977,11.656,0.502,0,523.5
+eta_clamped,0.80,ps5_eta800,"INVALID AS SWEEP: max(eta,IRR0.90) clamp; outputs byte-identical after label strip",11.662,10.977,11.656,0.502,0,523.5
+lease_us,250,ps5_lease0250,,11.625,11.352,11.620,0.504,0,524.6
+lease_us,500,ps5_lease0500,,11.653,11.416,11.648,0.502,0,523.7
+lease_us,2000,ps5_lease2000,,11.635,10.670,11.629,0.529,0,524.0
+lease_us,4000,ps5_lease4000,,11.652,10.769,11.646,0.550,0,523.7
+lease_us,1000,REUSE,campaign default,11.662,10.977,11.656,0.502,0,523.5
+bmax,0.005,ps5_bmax005,guard relaxed 0.10->0.30 for values >0.10,11.526,11.292,11.519,0.470,0,526.0
+bmax,0.010,ps5_bmax010,guard relaxed 0.10->0.30 for values >0.10,11.558,11.280,11.553,0.491,0,525.4
+bmax,0.040,ps5_bmax040,guard relaxed 0.10->0.30 for values >0.10,11.495,11.340,11.490,0.439,0,526.6
+bmax,0.080,ps5_bmax080,guard relaxed 0.10->0.30 for values >0.10,11.621,11.294,11.615,0.509,0,524.3
+bmax,0.120,ps5_bmax120,guard relaxed 0.10->0.30 for values >0.10,11.468,11.392,11.463,0.425,0,527.1
+bmax,0.160,ps5_bmax160,guard relaxed 0.10->0.30 for values >0.10,11.696,11.002,11.690,0.676,0,523.2
+bmax,0.200,ps5_bmax200,guard relaxed 0.10->0.30 for values >0.10,11.710,10.655,11.704,1.835,0,522.6
+bmax,0.250,ps5_bmax250,guard relaxed 0.10->0.30 for values >0.10,11.766,11.165,11.760,0.525,0,521.5
+bmax,0.300,ps5_bmax300,guard relaxed 0.10->0.30 for values >0.10,11.582,11.260,11.576,0.468,0,525.0
+bmax,0.020,REUSE,campaign default,11.662,10.977,11.656,0.502,0,523.5

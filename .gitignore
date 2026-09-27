@@ -1,0 +1,6 @@
+# raw simulation output lives in the archive repo's releases
+*.tgz
+*.tar.gz
+*.zip
+raw/
+results_raw/

@@ -1,0 +1,4 @@
+variant,cell,rate_ai,rate_hai,note,n_incast,cct_ms,mean_fct_ms,p99_fct_ms,qpeak_MB,pfc_rows,cct_delta_vs_legacy_pct
+cbap_matched,m_s4match_cbap,2000Mb/s,4000Mb/s,CBAP with the DCQCN baseline's speed-normalised backend,64,5.935,5.522,5.929,0.560,0,+0.27
+cbap_legacy,m_s4match_cbap_lai,50Mb/s,100Mb/s,CBAP with the historical backend values (all prior campaigns),64,5.919,5.503,5.913,0.551,0,
+dcqn_baseline,m_s4match_dcqn,2000Mb/s,4000Mb/s,DCQCN baseline reference,64,6.568,6.035,6.568,22.432,322,
